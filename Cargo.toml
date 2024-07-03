@@ -18,3 +18,5 @@ dll-syringe = "0.15.2"
 retour = "0.3.1"
 tracing = "0.1.37"
 tracing-subscriber = "0.3.17"
+windows = { version ="0.51.1", features=["Win32_System_LibraryLoader", "Win32_Foundation", "Win32_UI_WindowsAndMessaging"]}
+ilhook = "2"

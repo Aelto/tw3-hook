@@ -1,8 +1,9 @@
 use std::mem::size_of;
 
 use tracing::info;
+use windows::Win32::UI::WindowsAndMessaging::MessageBoxA;
 
-use super::pointers;
+use super::pointers::{self, VoidPtr};
 
 pub struct CFunction {
     pub pad: [char; 192],
@@ -10,8 +11,7 @@ pub struct CFunction {
 
 impl CFunction {}
 
-type VoidPtr = *const ();
-type ScriptFunction<F, RET> = dyn Fn(F, *mut GlobalScriptingContext, *mut RET);
+type ScriptFunction<RET> = dyn Fn(VoidPtr, *mut GlobalScriptingContext, *mut RET);
 
 unsafe fn register_name_string(name: &'static str) -> i32 {
     let pointer = pointers::REGISTER_NAME_FN as VoidPtr;
@@ -23,7 +23,10 @@ unsafe fn register_name_string(name: &'static str) -> i32 {
     name_id
 }
 
-unsafe fn allocate_cfunction<F>(name_id: i32, function: *mut F) -> *mut CFunction {
+unsafe fn allocate_cfunction<RET>(
+    name_id: i32,
+    function: *mut ScriptFunction<RET>,
+) -> *mut CFunction {
     // first param: size
     // second param: maybe alignment
     let pointer_1 = pointers::MEMORY_ALLOCATION_FN as VoidPtr;
@@ -31,8 +34,11 @@ unsafe fn allocate_cfunction<F>(name_id: i32, function: *mut F) -> *mut CFunctio
         std::mem::transmute(pointer_1);
 
     let pointer_2 = pointers::CFUNCTION_CONSTRUCTOR_FN as VoidPtr;
-    let cfunction_constructor: fn(*mut CFunction, &i32, *mut F) -> *mut CFunction =
-        std::mem::transmute(pointer_2);
+    let cfunction_constructor: fn(
+        *mut CFunction,
+        &i32,
+        *mut ScriptFunction<RET>,
+    ) -> *mut CFunction = std::mem::transmute(pointer_2);
 
     let memory: *mut CFunction = perform_memory_allocation(size_of::<CFunction>(), 16);
 
@@ -47,13 +53,13 @@ unsafe fn allocate_cfunction<F>(name_id: i32, function: *mut F) -> *mut CFunctio
     memory
 }
 
-struct GlobalScriptingContext {
-    // pub some_value: i64,
-    // pub pad: [char; 0x28],
-    // pub some_stack: *mut u8,
+pub struct GlobalScriptingContext {
+    pub some_value: i64,
+    pub pad: [char; 0x28],
+    pub some_stack: *mut u8,
 }
 
-unsafe fn register_function(cfunction: *mut CFunction) {
+unsafe fn register_cfunction(cfunction: *mut CFunction) {
     let pointer_1 = pointers::SCRIPTING_CONTEXT_SINGLETON_FN as VoidPtr;
     let scripting_context_singleton: fn() -> *mut GlobalScriptingContext =
         std::mem::transmute(pointer_1);
@@ -68,8 +74,11 @@ unsafe fn register_function(cfunction: *mut CFunction) {
     register_script_function(context, cfunction);
 }
 
-pub unsafe fn perform_script_function_registration<F>(name: &'static str, function: *mut F) {
+pub unsafe fn perform_script_function_registration<RET>(
+    name: &'static str,
+    function: *mut ScriptFunction<RET>,
+) {
     let id = register_name_string(name);
     let cfunction = allocate_cfunction(id, function);
-    register_function(cfunction);
+    register_cfunction(cfunction);
 }
